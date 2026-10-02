@@ -14,9 +14,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install NASM 3.01
+        env:
+          NASM_VER: "3.01"
         run: |
           set -euo pipefail
-          NASM_VER=3.01
+          BUILD_DIR="${RUNNER_TEMP:-/tmp}/nasm-build"
+          mkdir -p "$BUILD_DIR"
+          cd "$BUILD_DIR"
           URL_NASM_US="https://www.nasm.us/pub/nasm/releasebuilds/${NASM_VER}/nasm-${NASM_VER}.tar.xz"
           URL_GH="https://github.com/nasm/nasm/releases/download/nasm-${NASM_VER}/nasm-${NASM_VER}.tar.gz"
           if curl -fsSL "$URL_NASM_US" -o nasm.tar.xz; then
@@ -29,7 +33,6 @@ jobs:
           ./configure --prefix=/usr/local
           make -j"$(nproc)"
           sudo make install
-          cd ..
           command -v nasm
           nasm -v
 
