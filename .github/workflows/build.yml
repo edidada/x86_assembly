@@ -13,10 +13,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install NASM
+      - name: Install NASM 3.01
         run: |
-          sudo apt-get update
-          sudo apt-get install -y nasm
+          set -euo pipefail
+          NASM_VER=3.01
+          URL_NASM_US="https://www.nasm.us/pub/nasm/releasebuilds/${NASM_VER}/nasm-${NASM_VER}.tar.xz"
+          URL_GH="https://github.com/nasm/nasm/releases/download/nasm-${NASM_VER}/nasm-${NASM_VER}.tar.gz"
+          if curl -fsSL "$URL_NASM_US" -o nasm.tar.xz; then
+            tar xf nasm.tar.xz
+          else
+            curl -fsSL "$URL_GH" -o nasm.tar.gz
+            tar xzf nasm.tar.gz
+          fi
+          cd "nasm-${NASM_VER}"
+          ./configure --prefix=/usr/local
+          make -j"$(nproc)"
+          sudo make install
+          cd ..
+          command -v nasm
           nasm -v
 
       - name: Assemble all .asm files
