@@ -1,0 +1,74 @@
+name: Boot MBR in QEMU (experiment)
+
+on:
+  push:
+    branches: [experiment/qemu-boot]
+  workflow_dispatch:
+
+jobs:
+  boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: c05
+            src: c05/c05_mbr.asm
+            expect: "Label offset"
+          - case: c06
+            src: c06/c06_mbr.asm
+            expect: "Label offset"
+          - case: c07
+            src: c07/c07_mbr.asm
+            expect: "5050"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install NASM 3.01 and QEMU
+        env:
+          NASM_VER: "3.01"
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 curl xz-utils
+          BUILD_DIR="${RUNNER_TEMP:-/tmp}/nasm-build"
+          mkdir -p "$BUILD_DIR"
+          cd "$BUILD_DIR"
+          curl -fsSL "https://www.nasm.us/pub/nasm/releasebuilds/${NASM_VER}/nasm-${NASM_VER}.tar.xz" -o nasm.tar.xz
+          tar xf nasm.tar.xz
+          cd "nasm-${NASM_VER}"
+          ./configure --prefix=/usr/local
+          make -j"$(nproc)"
+          sudo make install
+          nasm -v
+          qemu-system-i386 --version
+
+      - name: Assemble ${{ matrix.case }} MBR into raw disk image
+        run: |
+          set -euo pipefail
+          nasm -f bin "${{ matrix.src }}" -o ${{ matrix.case }}_mbr.bin
+          # MBR is 512 bytes with 0x55AA signature; place it at LBA0 of a 1 MiB raw disk
+          dd if=/dev/zero of=disk.img bs=1M count=1 status=none
+          dd if=${{ matrix.case }}_mbr.bin of=disk.img conv=notrunc status=none
+          ls -l ${{ matrix.case }}_mbr.bin disk.img
+
+      - name: Boot in QEMU and verify VGA text output
+        run: |
+          python3 scripts/verify_boot.py \
+            --image disk.img \
+            --expect "${{ matrix.expect }}" \
+            --screenshot screen_${{ matrix.case }}.ppm \
+            --timeout 30
+
+      - name: Upload screenshot and binary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: boot-${{ matrix.case }}
+          path: |
+            screen_${{ matrix.case }}.ppm
+            ${{ matrix.case }}_mbr.bin
+          if-no-files-found: ignore
