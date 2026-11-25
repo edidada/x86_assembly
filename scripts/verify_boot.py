@@ -12,7 +12,6 @@ Usage:
 import argparse
 import json
 import os
-import re
 import socket
 import subprocess
 import sys
@@ -75,11 +74,26 @@ def wait_for_socket(path, proc, timeout=30):
 
 
 def read_vga_text(qmp, nbytes=1024):
-    """Read nbytes from 0xB8000 as characters via HMP xp, return text."""
-    raw = qmp.hmp(f"xp/{nbytes}cb {VGA_TEXT_ADDR:#x}")
-    # HMP prints lines like: 000b8000: '1' 0x07 '+' 0x07 ...
-    chars = re.findall(r"'([ -~])'", raw)
-    return "".join(chars), raw
+    """Read nbytes from 0xB8000 via HMP xp (hex bytes), decode text.
+
+    VGA text-mode framebuffer stores a character byte followed by an
+    attribute byte for each cell. Reading as hex avoids mis-parsing
+    quoted control bytes in HMP's char format.
+    """
+    raw = qmp.hmp(f"xp/{nbytes}xb {VGA_TEXT_ADDR:#x}")
+    data = []
+    for line in raw.splitlines():
+        if ":" not in line:
+            continue
+        payload = line.split(":", 1)[1].strip()
+        for tok in payload.split():
+            try:
+                data.append(int(tok, 16))
+            except ValueError:
+                pass
+    # Character byte is at even offsets; attribute byte at odd offsets.
+    chars = "".join(chr(b) if 0x20 <= b <= 0x7E else " " for b in data[0::2])
+    return chars, raw
 
 
 def main():
