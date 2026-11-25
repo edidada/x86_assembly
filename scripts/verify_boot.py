@@ -112,7 +112,10 @@ def main():
     qemu = subprocess.Popen([
         "qemu-system-i386",
         "-drive", f"file={args.image},format=raw,index=0,media=disk",
+        # Force the raw disk as the only bootable device; disable network
+        # (iPXE) and CD-ROM so SeaBIOS cannot wander into other boot paths.
         "-boot", "order=c",
+        "-net", "none",
         "-display", "none",
         "-qmp", f"unix:{QMP_SOCKET},server,nowait",
         "-no-reboot",
