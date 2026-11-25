@@ -1,3 +1,5 @@
 *.exe
 *.vhd
 *.ini
+__pycache__/
+*.pyc
