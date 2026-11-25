@@ -13,15 +13,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # c05 is the early hand-coded version from the book (byte-by-byte
+          # writes, no org directive). SeaBIOS rejects it as "not bootable";
+          # keep it as a negative control documenting that classic defect.
           - case: c05
             src: c05/c05_mbr.asm
             expect: "Label offset"
+            expect_fail: true
           - case: c06
             src: c06/c06_mbr.asm
             expect: "Label offset"
+            expect_fail: false
           - case: c07
             src: c07/c07_mbr.asm
             expect: "5050"
+            expect_fail: false
 
     steps:
       - name: Checkout
@@ -57,11 +63,13 @@ jobs:
 
       - name: Boot in QEMU and verify VGA text output
         run: |
+          EXTRA=""
+          if [ "${{ matrix.expect_fail }}" = "true" ]; then EXTRA="--expect-fail"; fi
           python3 scripts/verify_boot.py \
             --image disk.img \
             --expect "${{ matrix.expect }}" \
             --screenshot screen_${{ matrix.case }}.ppm \
-            --timeout 30
+            --timeout 30 $EXTRA
 
       - name: Upload screenshot and binary
         if: always()

@@ -3,11 +3,13 @@
 
 Starts qemu-system-i386 headless with a QMP socket, waits for the guest to
 run, reads physical memory at 0xB8000 (the VGA text-mode framebuffer) with
-the HMP `xp` command, and checks that the expected string was written.
+the HMP `xp` command, and checks whether the expected string was written.
 
 Usage:
     python3 scripts/verify_boot.py --image disk.img --expect "1+2+3=5050" \
-        [--screenshot screen.ppm] [--timeout 20]
+        [--expect-fail] [--screenshot screen.ppm] [--timeout 20]
+
+With --expect-fail the test PASSES when --expect is absent (negative control).
 """
 import argparse
 import json
@@ -101,6 +103,8 @@ def main():
     ap.add_argument("--image", required=True, help="raw disk image to boot")
     ap.add_argument("--expect", required=True,
                     help="substring that must appear in VGA text")
+    ap.add_argument("--expect-fail", action="store_true",
+                    help="invert: PASS when --expect is absent (negative control)")
     ap.add_argument("--screenshot", default=None, help="HMP screendump path")
     ap.add_argument("--timeout", type=int, default=25,
                     help="seconds to wait for expected text")
@@ -113,7 +117,7 @@ def main():
         "qemu-system-i386",
         "-drive", f"file={args.image},format=raw,index=0,media=disk",
         # Force the raw disk as the only bootable device; disable network
-        # (iPXE) and CD-ROM so SeaBIOS cannot wander into other boot paths.
+        # (iPXE) so SeaBIOS cannot wander into other boot paths.
         "-boot", "order=c",
         "-net", "none",
         "-display", "none",
@@ -132,7 +136,7 @@ def main():
         deadline = time.time() + args.timeout
         while time.time() < deadline:
             text, raw = read_vga_text(qmp)
-            if args.expect in text:
+            if (args.expect in text) != args.expect_fail:
                 break
             time.sleep(0.5)
 
@@ -147,7 +151,18 @@ def main():
             except Exception as e:  # screendump is best-effort
                 print(f"screendump skipped: {e}")
 
-        if args.expect not in text:
+        found = args.expect in text
+        if args.expect_fail:
+            if found:
+                print(f"::error::{args.expect!r} unexpectedly appeared "
+                      f"(negative control failed)")
+                print("----- raw xp dump -----")
+                print(raw[:4000])
+                return 1
+            print(f"OK (negative control): {args.expect!r} absent as expected")
+            return 0
+
+        if not found:
             print(f"::error::expected text {args.expect!r} not found in VGA output")
             print("----- raw xp dump -----")
             print(raw[:4000])
